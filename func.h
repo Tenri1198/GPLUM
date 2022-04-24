@@ -749,8 +749,11 @@ void collision_calc( Tpsys & pp,
 {
     const PS::S32 n_loc = pp.getNumberOfParticleLocal();
     const PS::S32 n_proc = PS::Comm::getNumberOfProc();
-    PS::F64 edisp_loc = 0.0;
+    PS::F64 edisp_loc = 0.;
     PS::F64 edisp_d_loc = 0.;
+    PS::S32 n_colrem_loc = 0;
+    PS::S32 n_colrem_glb = 0;
+
     static std::vector<PS::S32> n_colrem_list;
     static std::vector<PS::S32> n_colrem_adr;
     static std::vector<FP_t> colrem_list_loc;
@@ -812,6 +815,7 @@ void collision_calc( Tpsys & pp,
 #endif
                     pp[i].phi   = ( pp[i].mass*pp[i].phi   + pp[j].mass*pp[j].phi   )/(pp[i].mass+pp[j].mass);
                     pp[i].phi_d = ( pp[i].mass*pp[i].phi_d + pp[j].mass*pp[j].phi_d )/(pp[i].mass+pp[j].mass);
+                    edisp_loc -= 0.5 * pp[i].mass*pp[j].mass/(pp[i].mass+pp[j].mass) *vrel * vrel; 
 
 #pragma omp critical
                     {
@@ -851,11 +855,6 @@ void collision_calc( Tpsys & pp,
                     edisp_d_loc += massi * massk * rinv * (1.-cutoff_W2(dr2, pp[i].r_out_inv, pp[k].r_out_inv));
 		            }
                 }
-                else
-                {
-                    edisp_loc -= 0.5 * pp[i].mass*pp[j].mass/(pp[i].mass+pp[j].mass) * vrel*vrel; 
-                }
-                
             }   
             pp[i].isMerged = false;   
         }
@@ -874,8 +873,8 @@ void collision_calc( Tpsys & pp,
         colrem_list_loc.resize(n_colrem_loc);
         std::cout<<"L868"<<std::endl;
 #ifdef PARTICLE_SIMULATOR_PARALLEL
-	    MPI_Gather(&n_colrem_loc, 1, PS::GetDataType(n_colrem_loc,),
-	            &n_colrem_list[0], 1, PS::GetDataType(n_colrem_list[0], 0, MPI_COMM_WORLD));
+	     MPI_Gather(&n_remove_loc, 1, PS::GetDataType(n_remove_loc),
+                    &n_remove_list[0], 1, PS::GetDataType(n_colrem_list[0]), 0, MPI_COMM_WORLD));
 #else
          n_colrem_list[0] = n_colrem_loc;
 #endif
@@ -884,6 +883,7 @@ void collision_calc( Tpsys & pp,
 	        for ( PS::S32 i=0; i<n_proc; i++)
             {
 	            n_colrem_adr[i] = tmp_colrem;
+                std::cout<<"# of proc"<<i<<":"<<"n_colrem_list"<<n_colrem_list[i]<<std::endl;
 		        tmp_colrem += n_colrem_list[i];
 	        }
             std::cout<<"n_colrem_glb:"<<n_colrem_glb<<" tmp_colrem:"<<tmp_colrem<<std::endl;
