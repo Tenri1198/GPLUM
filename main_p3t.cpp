@@ -419,22 +419,31 @@ int main(int argc, char *argv[])
     std::ofstream fout_eng;
     std::ofstream fout_col;
     std::ofstream fout_rem;
+    std::ofstream fout_info;
+    std::ofstream fout_info2;
     char sout_eng[256];
     char sout_col[256];
     char sout_rem[256];
-
+    char sout_info[256];
+    char sout_info2[256];
     if ( PS::Comm::getRank() == 0 ) {
         sprintf(sout_eng, "%s/energy.dat",    dir_name);
+        sprintf(sout_info, "%s/info.dat",    dir_name);
+        sprintf(sout_info2, "%s/info2.dat",    dir_name);
         //sprintf(sout_col, "%s/collision.dat", dir_name);
         //sprintf(sout_rem, "%s/remove.dat",    dir_name);
         sprintf(sout_col, "%s/collision%06d.dat", dir_name, isnap+1);
         sprintf(sout_rem, "%s/remove%06d.dat",    dir_name, isnap+1);
         if ( time_sys == 0. ) {
             fout_eng.open(sout_eng, std::ios::out);
+            fout_info.open(sout_info, std::ios::out);
+            fout_info2.open(sout_info2, std::ios::out);
             //fout_col.open(sout_col, std::ios::out);
             //fout_rem.open(sout_rem, std::ios::out);
         } else {
             fout_eng.open(sout_eng, std::ios::app);
+            fout_info.open(sout_info, std::ios::app);
+            fout_info2.open(sout_info2, std::ios::app);
             //fout_col.open(sout_col, std::ios::app);
             //fout_rem.open(sout_rem, std::ios::app);
         }
@@ -496,6 +505,9 @@ int main(int argc, char *argv[])
         ///////////////////////////
 #ifdef GAS_DRAG
         correctEnergyForGas(system_grav, edisp_gd, false);
+        //[追加]追加したところ
+        correctEnergyForGas(system_grav, edisp_gd, true);
+        e_now.edisp += edisp_gd;
 #endif
         velKick(system_grav);
 #ifdef OUTPUT_DETAIL
@@ -736,16 +748,16 @@ int main(int argc, char *argv[])
            //ここでエネルギー計算をしておく(衝突前の) 
            total_mass_loc = calc_mass(system_grav);
            total_mass_glb = PS::Comm::getSum(total_mass_loc);
-           if ( PS::Comm::getRank() == 0 ) std::cerr << std::setprecision(16) << time_sys << ": total mass before marging " << total_mass_glb <<std::endl;
+           if ( PS::Comm::getRank() == 0 ) std::cerr << std::setprecision(16) << time_sys << ": total mass before merging " << total_mass_glb <<std::endl;
            //energyBeforeCol = e_now.calcEnergy_output(system_grav);  //エネルギーを返す関数
-           //col_flag = MergeParticle(system_grav, n_col, e_now.edisp,edisp_d);
-           collision_calc(system_grav,n_col,e_now.edisp,edisp_d);
-           fprintf(stderr,"%d/%d\n", PS::Comm::getRank(), PS::Comm::getNumberOfProc());
+           MergeParticle(system_grav, n_col, e_now.edisp,fout_info,time_sys);
+           //collision_calc(system_grav,n_col,e_now.edisp,edisp_d);
+           //fprintf(stderr,"%d/%d\n", PS::Comm::getRank(), PS::Comm::getNumberOfProc());
            total_mass_loc = 0.;
            total_mass_glb = 0.;
            total_mass_loc = calc_mass(system_grav);
            total_mass_glb = PS::Comm::getSum(total_mass_loc);
-           if ( PS::Comm::getRank() == 0 ) std::cerr << std::setprecision(16) << time_sys << ": total mass after marging " << total_mass_glb <<std::endl;
+           if ( PS::Comm::getRank() == 0 ) std::cerr << std::setprecision(16) << time_sys << ": total mass after merging " << total_mass_glb <<std::endl;
         }
         // Remove Particle Out Of Boundary
         n_remove = removeParticlesOutOfBoundary(system_grav, e_now.edisp, r_max, r_min, fout_rem);
@@ -792,8 +804,15 @@ int main(int argc, char *argv[])
             wtime.calc_soft_force_step += time_tmp;
             wtime.calc_soft_force += time_tmp;
 #endif
+
             //NList.initializeList(system_grav);
             correctForceLongInitial(system_grav, tree_grav, NList, n_ngb_tot, n_with_ngb);
+
+            //[追加]mergeやcrossing OMFでガスドラッグが変わるため
+#ifdef GAS_DRAG
+            correctEnergyForGas(system_grav, edisp_gd, true);
+            e_now.edisp += edisp_gd;
+#endif
 #ifdef INDIRECT_TERM
     calcIndirectTerm(system_grav);
 #endif
@@ -891,6 +910,8 @@ int main(int argc, char *argv[])
 
     if ( PS::Comm::getRank() == 0 ) {
         fout_eng.close();
+        fout_info.close();
+        fout_info2.close();
         fout_col.close();
         fout_rem.close();
     }
